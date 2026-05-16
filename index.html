@@ -1,0 +1,1668 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#080b13" />
+  <meta name="color-scheme" content="dark light" />
+  <title>Own Link Checker</title>
+  <style>
+    :root {
+      --bg: #080b13;
+      --bg2: #0d1220;
+      --panel: rgba(255,255,255,.075);
+      --panel2: rgba(255,255,255,.105);
+      --line: rgba(255,255,255,.14);
+      --line2: rgba(255,255,255,.22);
+      --text: #f5f7ff;
+      --muted: rgba(245,247,255,.68);
+      --muted2: rgba(245,247,255,.46);
+      --accent: #8fb7ff;
+      --accent2: #b79aff;
+      --ok: #73f5b0;
+      --bad: #ff7878;
+      --warn: #ffd479;
+      --info: #8fd7ff;
+      --radius-xl: 30px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --shadow: 0 24px 90px rgba(0,0,0,.38);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-top: env(safe-area-inset-top, 0px);
+      --font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Arial, sans-serif;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    html[data-theme="light"] {
+      --bg: #f5f7fc;
+      --bg2: #ffffff;
+      --panel: rgba(15, 25, 50, .055);
+      --panel2: rgba(15, 25, 50, .085);
+      --line: rgba(15, 25, 50, .12);
+      --line2: rgba(15, 25, 50, .2);
+      --text: #101827;
+      --muted: rgba(16, 24, 39, .68);
+      --muted2: rgba(16, 24, 39, .46);
+      --accent: #2f6fff;
+      --accent2: #7c55ff;
+      --shadow: 0 24px 90px rgba(40,50,80,.14);
+    }
+
+    * { box-sizing: border-box; }
+    html { background: var(--bg); min-height: 100%; }
+    body {
+      margin: 0;
+      min-height: 100%;
+      font-family: var(--font);
+      color: var(--text);
+      background:
+        radial-gradient(circle at 16% -8%, color-mix(in srgb, var(--accent) 34%, transparent), transparent 34rem),
+        radial-gradient(circle at 92% 3%, color-mix(in srgb, var(--accent2) 28%, transparent), transparent 30rem),
+        radial-gradient(circle at 50% 112%, rgba(115,245,176,.12), transparent 35rem),
+        linear-gradient(180deg, var(--bg), var(--bg2));
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+      background-size: 42px 42px;
+      opacity: .2;
+      mask-image: linear-gradient(to bottom, black, transparent 74%);
+    }
+
+    button, input, select, textarea { font: inherit; }
+    button { -webkit-tap-highlight-color: transparent; }
+    code { font-family: var(--mono); }
+
+    .app {
+      width: min(1220px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: calc(24px + var(--safe-top)) 0 calc(34px + var(--safe-bottom));
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: start;
+      margin-bottom: 20px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .logo {
+      width: 56px;
+      height: 56px;
+      border-radius: 19px;
+      position: relative;
+      overflow: hidden;
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 25% 20%, rgba(255,255,255,.72), transparent 19px),
+        linear-gradient(135deg, var(--accent), var(--accent2));
+      box-shadow: 0 18px 45px color-mix(in srgb, var(--accent) 22%, transparent);
+    }
+    .logo::before {
+      content: "";
+      width: 30px;
+      height: 18px;
+      border: 3px solid rgba(255,255,255,.88);
+      border-radius: 999px;
+      transform: rotate(-22deg);
+    }
+    .logo::after {
+      content: "";
+      position: absolute;
+      width: 19px;
+      height: 3px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.92);
+      transform: rotate(-22deg);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(29px, 5vw, 58px);
+      line-height: .95;
+      letter-spacing: -.06em;
+    }
+
+    .subtitle {
+      margin: 9px 0 0;
+      max-width: 770px;
+      color: var(--muted);
+      font-size: clamp(14px, 2vw, 17px);
+      line-height: 1.55;
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .pill, .btn, .mini {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      cursor: pointer;
+      user-select: none;
+      transition: transform .17s ease, background .17s ease, border-color .17s ease, opacity .17s ease;
+    }
+    .pill:hover, .btn:hover, .mini:hover {
+      border-color: var(--line2);
+      background: var(--panel2);
+      transform: translateY(-1px);
+    }
+    .pill:active, .btn:active, .mini:active { transform: translateY(0) scale(.985); }
+    .pill {
+      min-height: 42px;
+      border-radius: 999px;
+      padding: 0 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      backdrop-filter: blur(18px);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(340px, 450px) 1fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-xl);
+      background: linear-gradient(180deg, var(--panel), rgba(255,255,255,.04));
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(20px);
+      overflow: hidden;
+    }
+
+    .panel-head { padding: 20px 20px 0; }
+    .panel-title {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: -.035em;
+    }
+    .panel-note {
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .form {
+      padding: 18px 20px 20px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .field { display: grid; gap: 8px; }
+    label, .label {
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .09em;
+      color: var(--muted);
+    }
+
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: rgba(0,0,0,.18);
+      color: var(--text);
+      min-height: 48px;
+      padding: 12px 13px;
+      outline: none;
+      transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
+    }
+    html[data-theme="light"] input,
+    html[data-theme="light"] select,
+    html[data-theme="light"] textarea {
+      background: rgba(255,255,255,.78);
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: color-mix(in srgb, var(--accent) 76%, white);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
+    }
+    textarea {
+      min-height: 88px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .hint { color: var(--muted2); font-size: 12px; line-height: 1.35; }
+
+    .notice {
+      border: 1px solid color-mix(in srgb, var(--warn) 55%, var(--line));
+      border-radius: var(--radius-md);
+      background: color-mix(in srgb, var(--warn) 12%, transparent);
+      color: color-mix(in srgb, var(--warn) 84%, white);
+      padding: 11px 12px;
+      font-size: 12px;
+      line-height: 1.43;
+    }
+
+    .confirm {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: rgba(255,255,255,.05);
+      padding: 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.42;
+    }
+    .confirm input {
+      width: 20px;
+      height: 20px;
+      min-height: 20px;
+      margin: 0;
+      accent-color: var(--accent);
+      flex: 0 0 auto;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .btn {
+      min-height: 50px;
+      border-radius: var(--radius-md);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      font-weight: 850;
+    }
+    .btn:disabled, .mini:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .btn-primary {
+      color: #07111f;
+      border: 0;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      box-shadow: 0 18px 42px color-mix(in srgb, var(--accent) 22%, transparent);
+    }
+    .btn-danger {
+      color: #2d0707;
+      border: 0;
+      background: linear-gradient(135deg, #ff9d9d, #ff7474);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: max-content;
+      max-width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 11px;
+      color: var(--muted);
+      font-size: 12px;
+      background: rgba(255,255,255,.055);
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--ok);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 16%, transparent);
+      flex: 0 0 auto;
+    }
+
+    .result-panel { min-height: 790px; }
+    .stats {
+      padding: 18px 18px 0;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0,1fr));
+      gap: 10px;
+    }
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: rgba(255,255,255,.055);
+      padding: 13px;
+      min-width: 0;
+    }
+    .stat-value {
+      font-size: clamp(18px, 3.3vw, 27px);
+      font-weight: 950;
+      letter-spacing: -.045em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .stat-label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 4px;
+    }
+
+    .toolbar {
+      padding: 14px 18px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+    .search { position: relative; }
+    .search input { padding-left: 42px; }
+    .search::before {
+      content: "⌕";
+      position: absolute;
+      top: 50%;
+      left: 15px;
+      transform: translateY(-54%);
+      color: var(--muted);
+      font-size: 25px;
+      pointer-events: none;
+    }
+    .toolbar-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .progress-wrap {
+      padding: 0 18px 10px;
+      display: none;
+    }
+    .progress-wrap.active { display: block; }
+    .progress-line {
+      height: 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255,255,255,.06);
+      overflow: hidden;
+    }
+    .progress-line span {
+      display: block;
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      transition: width .16s ease;
+    }
+    .progress-text {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .list-shell {
+      margin: 0 18px 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      background: rgba(0,0,0,.14);
+    }
+    html[data-theme="light"] .list-shell { background: rgba(255,255,255,.58); }
+
+    .list-head, .row {
+      display: grid;
+      grid-template-columns: 58px minmax(180px,1fr) 118px 92px 118px;
+      align-items: center;
+    }
+    .list-head {
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,.055);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 850;
+      text-transform: uppercase;
+      letter-spacing: .075em;
+    }
+    .list-head > div { padding: 12px 10px; }
+
+    .list {
+      min-height: 498px;
+      max-height: 610px;
+      overflow: auto;
+      overscroll-behavior: contain;
+    }
+    .row {
+      min-height: 62px;
+      border-bottom: 1px solid var(--line);
+    }
+    .row:last-child { border-bottom: 0; }
+
+    .idx {
+      color: var(--muted2);
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 0 10px;
+    }
+    .url {
+      min-width: 0;
+      padding: 10px 10px 10px 0;
+      font-family: var(--mono);
+      font-size: 12.5px;
+      line-height: 1.34;
+      overflow-wrap: anywhere;
+    }
+    .url a {
+      color: color-mix(in srgb, var(--accent) 85%, white);
+      text-decoration: none;
+    }
+    .url a:hover { text-decoration: underline; }
+
+    .status-pill {
+      width: max-content;
+      max-width: calc(100% - 8px);
+      border-radius: 999px;
+      padding: 7px 9px;
+      font-size: 12px;
+      font-weight: 850;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.06);
+      color: var(--muted);
+    }
+    .s-ok { color: color-mix(in srgb, var(--ok) 88%, white); border-color: color-mix(in srgb, var(--ok) 50%, var(--line)); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+    .s-bad { color: color-mix(in srgb, var(--bad) 88%, white); border-color: color-mix(in srgb, var(--bad) 50%, var(--line)); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+    .s-warn { color: color-mix(in srgb, var(--warn) 88%, white); border-color: color-mix(in srgb, var(--warn) 50%, var(--line)); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+    .s-info { color: color-mix(in srgb, var(--info) 88%, white); border-color: color-mix(in srgb, var(--info) 50%, var(--line)); background: color-mix(in srgb, var(--info) 12%, transparent); }
+
+    .small-cell {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 0 10px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .mini-actions {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-end;
+      padding-right: 10px;
+    }
+    .mini {
+      width: 36px;
+      height: 36px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: rgba(255,255,255,.07);
+      color: var(--text);
+    }
+
+    .empty {
+      min-height: 498px;
+      display: grid;
+      place-items: center;
+      padding: 28px;
+      text-align: center;
+      color: var(--muted);
+    }
+    .empty strong {
+      display: block;
+      color: var(--text);
+      font-size: 20px;
+      margin-bottom: 8px;
+      letter-spacing: -.03em;
+    }
+
+    .pager {
+      border-top: 1px solid var(--line);
+      display: flex;
+      gap: 10px;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .pager-controls { display: flex; gap: 8px; }
+
+    .toast {
+      position: fixed;
+      z-index: 30;
+      left: 50%;
+      bottom: calc(18px + var(--safe-bottom));
+      transform: translateX(-50%) translateY(18px);
+      opacity: 0;
+      pointer-events: none;
+      max-width: calc(100% - 28px);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--bg2) 87%, transparent);
+      color: var(--text);
+      padding: 12px 16px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(20px);
+      text-align: center;
+      font-size: 14px;
+      transition: opacity .2s ease, transform .2s ease;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    dialog {
+      width: min(720px, calc(100% - 28px));
+      border: 1px solid var(--line);
+      border-radius: var(--radius-xl);
+      background: var(--bg2);
+      color: var(--text);
+      box-shadow: var(--shadow);
+      padding: 0;
+      overflow: hidden;
+    }
+    dialog::backdrop {
+      background: rgba(0,0,0,.62);
+      backdrop-filter: blur(6px);
+    }
+    .dialog-body {
+      padding: 22px;
+      color: var(--muted);
+      line-height: 1.58;
+    }
+    .dialog-body h2 {
+      color: var(--text);
+      margin: 0 0 10px;
+      letter-spacing: -.04em;
+    }
+    .dialog-body code {
+      color: color-mix(in srgb, var(--accent) 86%, white);
+      background: rgba(255,255,255,.08);
+      border: 1px solid var(--line);
+      padding: 2px 6px;
+      border-radius: 8px;
+    }
+    .dialog-footer {
+      display: flex;
+      justify-content: flex-end;
+      padding: 0 22px 22px;
+    }
+
+    @media (max-width: 980px) {
+      .hero { grid-template-columns: 1fr; }
+      .top-actions { justify-content: flex-start; }
+      .grid { grid-template-columns: 1fr; }
+      .result-panel { min-height: 0; }
+    }
+
+    @media (max-width: 720px) {
+      .app { width: min(100% - 18px, 1220px); padding-top: calc(16px + var(--safe-top)); }
+      .logo { width: 48px; height: 48px; border-radius: 16px; }
+      .panel { border-radius: 24px; }
+      .stats { grid-template-columns: 1fr 1fr; padding-inline: 12px; }
+      .toolbar { grid-template-columns: 1fr; padding-inline: 12px; }
+      .toolbar-buttons { justify-content: stretch; }
+      .toolbar-buttons .btn { flex: 1 1 calc(50% - 8px); min-height: 46px; }
+      .list-shell { margin-inline: 12px; }
+      .list-head, .row { grid-template-columns: 46px minmax(160px,1fr) 94px 76px 84px; }
+      .list-head > div { font-size: 9.5px; padding: 10px 6px; }
+      .idx { padding-inline: 6px; }
+      .url { font-size: 11.5px; padding-right: 6px; }
+      .status-pill { padding: 6px 7px; font-size: 11px; }
+      .small-cell { padding-inline: 6px; font-size: 11px; }
+      .mini { width: 32px; height: 32px; border-radius: 10px; }
+      .mini-actions { padding-right: 6px; gap: 4px; }
+      .two, .three { grid-template-columns: 1fr; }
+      .actions { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 470px) {
+      .list-head, .row { grid-template-columns: 42px minmax(155px,1fr) 86px 70px; }
+      .list-head > div:nth-child(4),
+      .list-head > div:nth-child(5),
+      .row .small-cell.latency,
+      .row .mini-actions { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="hero">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"></div>
+        <div>
+          <h1>Own Link Checker</h1>
+          <p class="subtitle">
+            Генерирует варианты ссылок по шаблону и показывает, какие из твоих ссылок открываются.
+            Есть лимит скорости, остановка проверки и экспорт только рабочих результатов.
+          </p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="pill" id="themeBtn" type="button">🌗 Тема</button>
+        <button class="pill" id="helpBtn" type="button">? Как работает</button>
+      </div>
+    </section>
+
+    <section class="grid">
+      <aside class="panel">
+        <div class="panel-head">
+          <h2 class="panel-title">Настройка</h2>
+          <p class="panel-note">
+            Шаблон использует <b>{num}</b> для числа и <b>{letters}</b> для буквенного кода.
+          </p>
+        </div>
+
+        <form class="form" id="form">
+          <div class="field">
+            <label for="pattern">Ссылка-шаблон</label>
+            <input id="pattern" value="https://telegra.ph/ZZH-23-{num}-{letters}-12-10" autocomplete="off" spellcheck="false" />
+            <div class="hint">Пример даст ссылку вида <code>https://telegra.ph/ZZH-23-20-om-12-10</code></div>
+          </div>
+
+          <div class="three">
+            <div class="field">
+              <label for="numStart">Число от</label>
+              <input id="numStart" type="number" inputmode="numeric" value="1" min="0" />
+            </div>
+            <div class="field">
+              <label for="numEnd">Число до</label>
+              <input id="numEnd" type="number" inputmode="numeric" value="99" min="0" />
+            </div>
+            <div class="field">
+              <label for="numStep">Шаг</label>
+              <input id="numStep" type="number" inputmode="numeric" value="1" min="1" />
+            </div>
+          </div>
+
+          <div class="two">
+            <div class="field">
+              <label for="pad">Нули слева</label>
+              <select id="pad">
+                <option value="0">Нет</option>
+                <option value="2" selected>2 знака: 01</option>
+                <option value="3">3 знака: 001</option>
+                <option value="4">4 знака: 0001</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="order">Порядок</label>
+              <select id="order">
+                <option value="numbers-first" selected>Сначала числа</option>
+                <option value="letters-first">Сначала буквы</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="lettersMode">Буквенный код</label>
+            <select id="lettersMode">
+              <option value="fixed" selected>Готовый список</option>
+              <option value="alphabet">Все комбинации из алфавита</option>
+            </select>
+          </div>
+
+          <div class="field" id="fixedLettersField">
+            <label for="fixedLetters">Список кодов</label>
+            <textarea id="fixedLetters" spellcheck="false">om
+mo</textarea>
+            <div class="hint">Можно через пробел, запятую или с новой строки.</div>
+          </div>
+
+          <div id="alphabetFields" hidden>
+            <div class="field">
+              <label for="alphabet">Алфавит</label>
+              <input id="alphabet" value="abcdefghijklmnopqrstuvwxyz" autocomplete="off" spellcheck="false" />
+              <div class="hint">Например, алфавит <code>om</code> и длина 2 создаст <code>oo, om, mo, mm</code>.</div>
+            </div>
+            <div class="two">
+              <div class="field">
+                <label for="lenMin">Длина от</label>
+                <input id="lenMin" type="number" inputmode="numeric" value="2" min="1" max="5" />
+              </div>
+              <div class="field">
+                <label for="lenMax">Длина до</label>
+                <input id="lenMax" type="number" inputmode="numeric" value="2" min="1" max="5" />
+              </div>
+            </div>
+          </div>
+
+          <div class="two">
+            <div class="field">
+              <label for="maxResults">Лимит ссылок</label>
+              <input id="maxResults" type="number" inputmode="numeric" value="2000" min="1" max="50000" />
+            </div>
+            <div class="field">
+              <label for="pageSize">На странице</label>
+              <select id="pageSize">
+                <option value="50">50</option>
+                <option value="100" selected>100</option>
+                <option value="250">250</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="checkMode">Режим проверки</label>
+            <select id="checkMode">
+              <option value="backend" selected>Через backend API: /api/check</option>
+              <option value="direct">Прямо из браузера, если сайт разрешает CORS</option>
+            </select>
+          </div>
+
+          <div class="field" id="apiField">
+            <label for="apiEndpoint">Адрес API проверки</label>
+            <input id="apiEndpoint" value="/api/check" autocomplete="off" spellcheck="false" />
+            <div class="hint">Для Vercel оставь <code>/api/check</code>. Для другого сервера укажи полный адрес.</div>
+          </div>
+
+          <div class="two">
+            <div class="field">
+              <label for="concurrency">Потоков</label>
+              <select id="concurrency">
+                <option value="1">1 — максимально мягко</option>
+                <option value="2" selected>2 — нормально</option>
+                <option value="3">3 — быстрее</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="delayMs">Пауза, мс</label>
+              <input id="delayMs" type="number" inputmode="numeric" value="900" min="250" max="10000" />
+            </div>
+          </div>
+
+          <label class="confirm">
+            <input id="ownLinksConfirm" type="checkbox" />
+            <span>Я проверяю свои ссылки или ссылки, на проверку которых у меня есть разрешение.</span>
+          </label>
+
+          <div class="notice">
+            Для <code>telegra.ph</code> прямой браузерный режим может показать <b>CORS</b>.
+            Тогда ставь проект на Vercel/сервер и используй режим backend.
+          </div>
+
+          <div class="actions">
+            <button class="btn btn-primary" type="submit">⚡ Создать список</button>
+            <button class="btn" id="checkBtn" type="button">✅ Проверить</button>
+            <button class="btn" id="stopBtn" type="button" disabled>⏹ Остановить</button>
+            <button class="btn btn-danger" id="clearBtn" type="button">🧹 Очистить</button>
+          </div>
+
+          <span class="badge" id="statusBadge"><span class="dot"></span> Готово</span>
+        </form>
+      </aside>
+
+      <section class="panel result-panel">
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-value" id="totalStat">0</div>
+            <div class="stat-label">всего</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value" id="okStat">0</div>
+            <div class="stat-label">рабочих</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value" id="badStat">0</div>
+            <div class="stat-label">не найдено</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value" id="leftStat">0</div>
+            <div class="stat-label">ожидает</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value" id="pageStat">1/1</div>
+            <div class="stat-label">страница</div>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <div class="search">
+            <input id="filterInput" type="search" placeholder="Фильтр: рабочие, ошибка, 404, часть ссылки..." autocomplete="off" />
+          </div>
+          <div class="toolbar-buttons">
+            <button class="btn" id="showWorkingBtn" type="button">🟢 Рабочие</button>
+            <button class="btn" id="copyWorkingBtn" type="button">📋 Копировать рабочие</button>
+            <button class="btn" id="exportWorkingBtn" type="button">TXT рабочие</button>
+            <button class="btn" id="exportAllBtn" type="button">CSV всё</button>
+          </div>
+        </div>
+
+        <div class="progress-wrap" id="progressWrap">
+          <div class="progress-line"><span id="progressBar"></span></div>
+          <div class="progress-text" id="progressText">Проверка...</div>
+        </div>
+
+        <div class="list-shell">
+          <div class="list-head">
+            <div>#</div>
+            <div>Ссылка</div>
+            <div>Статус</div>
+            <div>Время</div>
+            <div>Действия</div>
+          </div>
+          <div class="list" id="list">
+            <div class="empty">
+              <div>
+                <strong>Список пока пуст</strong>
+                Создай варианты ссылок, затем нажми «Проверить».
+              </div>
+            </div>
+          </div>
+          <div class="pager">
+            <span id="rangeText">0–0 из 0</span>
+            <div class="pager-controls">
+              <button class="mini" id="prevBtn" type="button">‹</button>
+              <button class="mini" id="nextBtn" type="button">›</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="helpDialog">
+    <div class="dialog-body">
+      <h2>Как это работает</h2>
+      <p>
+        Сначала приложение создаёт список из шаблона, например
+        <code>https://telegra.ph/ZZH-23-{num}-{letters}-12-10</code>.
+        Потом проверяет каждую ссылку и показывает статус.
+      </p>
+      <p>
+        <b>Рабочая</b> — сервер вернул HTTP 200–399. <b>Не найдена</b> — HTTP 404/410.
+        <b>CORS</b> означает, что браузеру запрещено читать ответ сайта. Для таких сайтов нужен backend API из архива.
+      </p>
+      <p>
+        В backend есть ограничение: по умолчанию он проверяет только домены из переменной
+        <code>ALLOWED_HOSTS</code>. Для Telegra.ph поставь <code>ALLOWED_HOSTS=telegra.ph</code>.
+      </p>
+    </div>
+    <div class="dialog-footer">
+      <button class="btn btn-primary" id="closeHelpBtn" type="button">Понятно</button>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module">
+    const $ = (selector, root = document) => root.querySelector(selector);
+
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+    class OwnLinkChecker {
+      constructor() {
+        this.items = [];
+        this.filtered = [];
+        this.page = 1;
+        this.isChecking = false;
+        this.abortController = null;
+        this.toastTimer = null;
+        this.formatter = new Intl.NumberFormat("ru-RU");
+
+        this.nodes = {
+          html: document.documentElement,
+          form: $("#form"),
+          pattern: $("#pattern"),
+          numStart: $("#numStart"),
+          numEnd: $("#numEnd"),
+          numStep: $("#numStep"),
+          pad: $("#pad"),
+          order: $("#order"),
+          lettersMode: $("#lettersMode"),
+          fixedLetters: $("#fixedLetters"),
+          fixedLettersField: $("#fixedLettersField"),
+          alphabetFields: $("#alphabetFields"),
+          alphabet: $("#alphabet"),
+          lenMin: $("#lenMin"),
+          lenMax: $("#lenMax"),
+          maxResults: $("#maxResults"),
+          pageSize: $("#pageSize"),
+          checkMode: $("#checkMode"),
+          apiField: $("#apiField"),
+          apiEndpoint: $("#apiEndpoint"),
+          concurrency: $("#concurrency"),
+          delayMs: $("#delayMs"),
+          ownLinksConfirm: $("#ownLinksConfirm"),
+          checkBtn: $("#checkBtn"),
+          stopBtn: $("#stopBtn"),
+          clearBtn: $("#clearBtn"),
+          statusBadge: $("#statusBadge"),
+          totalStat: $("#totalStat"),
+          okStat: $("#okStat"),
+          badStat: $("#badStat"),
+          leftStat: $("#leftStat"),
+          pageStat: $("#pageStat"),
+          filterInput: $("#filterInput"),
+          list: $("#list"),
+          rangeText: $("#rangeText"),
+          prevBtn: $("#prevBtn"),
+          nextBtn: $("#nextBtn"),
+          progressWrap: $("#progressWrap"),
+          progressBar: $("#progressBar"),
+          progressText: $("#progressText"),
+          showWorkingBtn: $("#showWorkingBtn"),
+          copyWorkingBtn: $("#copyWorkingBtn"),
+          exportWorkingBtn: $("#exportWorkingBtn"),
+          exportAllBtn: $("#exportAllBtn"),
+          themeBtn: $("#themeBtn"),
+          helpBtn: $("#helpBtn"),
+          helpDialog: $("#helpDialog"),
+          closeHelpBtn: $("#closeHelpBtn"),
+          toast: $("#toast")
+        };
+
+        this.restore();
+        this.bind();
+        this.syncMode();
+        this.render();
+      }
+
+      bind() {
+        this.nodes.form.addEventListener("submit", event => {
+          event.preventDefault();
+          this.generate();
+        });
+
+        this.nodes.lettersMode.addEventListener("change", () => {
+          this.syncMode();
+          this.save();
+        });
+
+        this.nodes.checkMode.addEventListener("change", () => {
+          this.nodes.apiField.hidden = this.nodes.checkMode.value !== "backend";
+          this.save();
+        });
+
+        this.nodes.pageSize.addEventListener("change", () => {
+          this.page = 1;
+          this.save();
+          this.render();
+        });
+
+        this.nodes.filterInput.addEventListener("input", () => {
+          this.page = 1;
+          this.render();
+        });
+
+        this.nodes.prevBtn.addEventListener("click", () => {
+          this.page = Math.max(1, this.page - 1);
+          this.render();
+        });
+
+        this.nodes.nextBtn.addEventListener("click", () => {
+          this.page = Math.min(this.totalPages, this.page + 1);
+          this.render();
+        });
+
+        this.nodes.checkBtn.addEventListener("click", () => this.checkAll());
+        this.nodes.stopBtn.addEventListener("click", () => this.stopChecking());
+        this.nodes.clearBtn.addEventListener("click", () => this.clear());
+
+        this.nodes.showWorkingBtn.addEventListener("click", () => {
+          this.nodes.filterInput.value = "рабочая";
+          this.page = 1;
+          this.render();
+        });
+
+        this.nodes.copyWorkingBtn.addEventListener("click", () => this.copyWorking());
+        this.nodes.exportWorkingBtn.addEventListener("click", () => this.exportWorkingTxt());
+        this.nodes.exportAllBtn.addEventListener("click", () => this.exportAllCsv());
+
+        this.nodes.themeBtn.addEventListener("click", () => this.toggleTheme());
+        this.nodes.helpBtn.addEventListener("click", () => this.nodes.helpDialog.showModal());
+        this.nodes.closeHelpBtn.addEventListener("click", () => this.nodes.helpDialog.close());
+
+        this.nodes.list.addEventListener("click", event => {
+          const button = event.target.closest("[data-action]");
+          if (!button) return;
+
+          const url = button.dataset.url;
+
+          if (button.dataset.action === "copy") this.copyText(url, "Ссылка скопирована.");
+          if (button.dataset.action === "open") window.open(url, "_blank", "noopener,noreferrer");
+          if (button.dataset.action === "recheck") this.checkSingleByUrl(url);
+        });
+
+        for (const input of this.nodes.form.elements) {
+          if (input instanceof HTMLElement) {
+            input.addEventListener("change", () => this.save());
+          }
+        }
+      }
+
+      get pageSize() {
+        return Number(this.nodes.pageSize.value) || 100;
+      }
+
+      get totalPages() {
+        return Math.max(1, Math.ceil(this.filtered.length / this.pageSize));
+      }
+
+      syncMode() {
+        const alpha = this.nodes.lettersMode.value === "alphabet";
+        this.nodes.fixedLettersField.hidden = alpha;
+        this.nodes.alphabetFields.hidden = !alpha;
+        this.nodes.apiField.hidden = this.nodes.checkMode.value !== "backend";
+      }
+
+      collectSettings() {
+        return {
+          pattern: this.nodes.pattern.value,
+          numStart: this.nodes.numStart.value,
+          numEnd: this.nodes.numEnd.value,
+          numStep: this.nodes.numStep.value,
+          pad: this.nodes.pad.value,
+          order: this.nodes.order.value,
+          lettersMode: this.nodes.lettersMode.value,
+          fixedLetters: this.nodes.fixedLetters.value,
+          alphabet: this.nodes.alphabet.value,
+          lenMin: this.nodes.lenMin.value,
+          lenMax: this.nodes.lenMax.value,
+          maxResults: this.nodes.maxResults.value,
+          pageSize: this.nodes.pageSize.value,
+          checkMode: this.nodes.checkMode.value,
+          apiEndpoint: this.nodes.apiEndpoint.value,
+          concurrency: this.nodes.concurrency.value,
+          delayMs: this.nodes.delayMs.value
+        };
+      }
+
+      generate() {
+        this.stopChecking(false);
+        this.save();
+
+        const pattern = this.nodes.pattern.value.trim();
+        if (!pattern.includes("{num}") || !pattern.includes("{letters}")) {
+          this.toast("В шаблоне должны быть {num} и {letters}.");
+          return;
+        }
+
+        const numStart = Number(this.nodes.numStart.value);
+        const numEnd = Number(this.nodes.numEnd.value);
+        const step = Math.max(1, Number(this.nodes.numStep.value) || 1);
+        const pad = Number(this.nodes.pad.value) || 0;
+        const maxResults = Math.min(50000, Math.max(1, Number(this.nodes.maxResults.value) || 1));
+        const order = this.nodes.order.value;
+        const direction = numStart <= numEnd ? 1 : -1;
+
+        if (!Number.isFinite(numStart) || !Number.isFinite(numEnd)) {
+          this.toast("Диапазон чисел указан неверно.");
+          return;
+        }
+
+        const codes = this.getCodes().slice(0, 50000);
+        if (!codes.length) {
+          this.toast("Нет буквенных кодов.");
+          return;
+        }
+
+        const nums = [];
+        for (let n = numStart; direction > 0 ? n <= numEnd : n >= numEnd; n += step * direction) {
+          nums.push(String(n).padStart(pad, "0"));
+          if (nums.length > maxResults) break;
+        }
+
+        const urls = [];
+        const make = (num, code) => pattern.replaceAll("{num}", num).replaceAll("{letters}", code);
+
+        if (order === "letters-first") {
+          for (const code of codes) {
+            for (const num of nums) {
+              urls.push(make(num, code));
+              if (urls.length >= maxResults) break;
+            }
+            if (urls.length >= maxResults) break;
+          }
+        } else {
+          for (const num of nums) {
+            for (const code of codes) {
+              urls.push(make(num, code));
+              if (urls.length >= maxResults) break;
+            }
+            if (urls.length >= maxResults) break;
+          }
+        }
+
+        this.items = urls.map((url, index) => ({
+          id: index + 1,
+          url,
+          state: "pending",
+          label: "ожидает",
+          status: "",
+          latency: "",
+          checkedAt: "",
+          error: ""
+        }));
+
+        this.page = 1;
+        this.setStatus(`Создано ${this.format(this.items.length)} ссылок`, "ok");
+        this.toast("Список создан. Теперь нажми «Проверить».");
+        this.render();
+      }
+
+      getCodes() {
+        if (this.nodes.lettersMode.value === "fixed") {
+          return [...new Set(
+            this.nodes.fixedLetters.value
+              .split(/[\n,;\s]+/g)
+              .map(x => x.trim())
+              .filter(Boolean)
+          )];
+        }
+
+        const chars = [...new Set(this.nodes.alphabet.value.split("").filter(Boolean))];
+        const min = Math.max(1, Math.min(5, Number(this.nodes.lenMin.value) || 1));
+        const max = Math.max(min, Math.min(5, Number(this.nodes.lenMax.value) || min));
+        const out = [];
+
+        const build = (prefix, length) => {
+          if (prefix.length === length) {
+            out.push(prefix);
+            return;
+          }
+
+          for (const char of chars) build(prefix + char, length);
+        };
+
+        for (let len = min; len <= max; len++) build("", len);
+
+        return out;
+      }
+
+      async checkAll() {
+        if (!this.items.length) {
+          this.toast("Сначала создай список ссылок.");
+          return;
+        }
+
+        if (!this.nodes.ownLinksConfirm.checked) {
+          this.toast("Подтверди, что проверяешь свои ссылки.");
+          return;
+        }
+
+        this.isChecking = true;
+        this.abortController = new AbortController();
+        this.nodes.checkBtn.disabled = true;
+        this.nodes.stopBtn.disabled = false;
+        this.setStatus("Проверка идёт...", "warn");
+        this.showProgress();
+
+        const queue = this.items.filter(item => item.state === "pending" || item.state === "error" || item.state === "cors");
+        const concurrency = Math.max(1, Math.min(3, Number(this.nodes.concurrency.value) || 1));
+        const delay = Math.max(250, Math.min(10000, Number(this.nodes.delayMs.value) || 900));
+        let cursor = 0;
+
+        const worker = async () => {
+          while (cursor < queue.length && this.isChecking) {
+            const item = queue[cursor++];
+            await this.checkItem(item);
+            this.renderProgress();
+
+            if (this.isChecking) await sleep(delay);
+          }
+        };
+
+        await Promise.all(Array.from({ length: concurrency }, worker));
+
+        this.isChecking = false;
+        this.nodes.checkBtn.disabled = false;
+        this.nodes.stopBtn.disabled = true;
+        this.abortController = null;
+        this.hideProgressSoon();
+
+        const ok = this.items.filter(item => item.state === "ok").length;
+        this.setStatus(`Проверка завершена. Рабочих: ${this.format(ok)}`, "ok");
+        this.toast(`Готово. Рабочих ссылок: ${this.format(ok)}.`);
+        this.render();
+      }
+
+      async checkSingleByUrl(url) {
+        const item = this.items.find(x => x.url === url);
+        if (!item) return;
+
+        if (!this.nodes.ownLinksConfirm.checked) {
+          this.toast("Подтверди, что проверяешь свои ссылки.");
+          return;
+        }
+
+        this.abortController = new AbortController();
+        item.state = "checking";
+        item.label = "проверка";
+        this.render();
+
+        await this.checkItem(item);
+        this.abortController = null;
+        this.render();
+      }
+
+      async checkItem(item) {
+        const startedAt = performance.now();
+
+        item.state = "checking";
+        item.label = "проверка";
+        item.status = "";
+        item.latency = "";
+        item.error = "";
+        this.renderDebounced();
+
+        try {
+          const result = this.nodes.checkMode.value === "backend"
+            ? await this.backendCheck(item.url)
+            : await this.directCheck(item.url);
+
+          item.status = String(result.status || "");
+          item.latency = `${Math.round(result.latency ?? (performance.now() - startedAt))} мс`;
+          item.checkedAt = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+          item.error = result.error || "";
+
+          if (result.ok) {
+            item.state = "ok";
+            item.label = "рабочая";
+          } else if (result.kind === "not_found" || result.status === 404 || result.status === 410) {
+            item.state = "bad";
+            item.label = result.status === 410 ? "удалена" : "404";
+          } else if (result.kind === "cors") {
+            item.state = "cors";
+            item.label = "CORS";
+          } else if (result.kind === "blocked") {
+            item.state = "warn";
+            item.label = "запрещено";
+          } else {
+            item.state = "error";
+            item.label = result.status ? `HTTP ${result.status}` : "ошибка";
+          }
+        } catch (error) {
+          item.state = error?.name === "AbortError" ? "pending" : "error";
+          item.label = error?.name === "AbortError" ? "ожидает" : "ошибка";
+          item.error = error?.message || "Ошибка проверки";
+          item.latency = `${Math.round(performance.now() - startedAt)} мс`;
+        }
+      }
+
+      async backendCheck(url) {
+        const endpoint = this.nodes.apiEndpoint.value.trim() || "/api/check";
+        const startedAt = performance.now();
+
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: this.abortController?.signal,
+          body: JSON.stringify({ url })
+        });
+
+        let data = {};
+        try {
+          data = await response.json();
+        } catch {
+          data = {};
+        }
+
+        if (!response.ok && !data.status) {
+          return {
+            ok: false,
+            kind: data.kind || "error",
+            status: response.status,
+            latency: performance.now() - startedAt,
+            error: data.error || `API вернул HTTP ${response.status}`
+          };
+        }
+
+        return {
+          ...data,
+          latency: data.latency ?? (performance.now() - startedAt)
+        };
+      }
+
+      async directCheck(url) {
+        const startedAt = performance.now();
+
+        try {
+          const response = await fetch(url, {
+            method: "HEAD",
+            mode: "cors",
+            redirect: "follow",
+            cache: "no-store",
+            signal: this.abortController?.signal
+          });
+
+          return {
+            ok: response.status >= 200 && response.status < 400,
+            kind: response.status === 404 || response.status === 410 ? "not_found" : "http",
+            status: response.status,
+            latency: performance.now() - startedAt
+          };
+        } catch (error) {
+          if (error?.name === "AbortError") throw error;
+
+          return {
+            ok: false,
+            kind: "cors",
+            status: "",
+            latency: performance.now() - startedAt,
+            error: "Браузер не дал прочитать ответ сайта. Используй backend API."
+          };
+        }
+      }
+
+      stopChecking(showToast = true) {
+        this.isChecking = false;
+        this.abortController?.abort();
+        this.abortController = null;
+        this.nodes.checkBtn.disabled = false;
+        this.nodes.stopBtn.disabled = true;
+        this.hideProgressSoon();
+
+        for (const item of this.items) {
+          if (item.state === "checking") {
+            item.state = "pending";
+            item.label = "ожидает";
+          }
+        }
+
+        if (showToast) {
+          this.setStatus("Проверка остановлена", "warn");
+          this.toast("Проверка остановлена.");
+        }
+
+        this.render();
+      }
+
+      clear() {
+        this.stopChecking(false);
+        this.items = [];
+        this.filtered = [];
+        this.page = 1;
+        this.nodes.filterInput.value = "";
+        this.setStatus("Список очищен", "ok");
+        this.render();
+      }
+
+      applyFilter() {
+        const query = this.nodes.filterInput.value.trim().toLowerCase();
+
+        this.filtered = query
+          ? this.items.filter(item => {
+              const haystack = [
+                item.url,
+                item.label,
+                item.status,
+                item.state,
+                item.error
+              ].join(" ").toLowerCase();
+
+              return haystack.includes(query);
+            })
+          : this.items.slice();
+      }
+
+      render() {
+        this.applyFilter();
+        this.page = Math.min(this.page, this.totalPages);
+
+        const start = (this.page - 1) * this.pageSize;
+        const end = Math.min(start + this.pageSize, this.filtered.length);
+        const visible = this.filtered.slice(start, end);
+
+        const ok = this.items.filter(item => item.state === "ok").length;
+        const bad = this.items.filter(item => item.state === "bad").length;
+        const left = this.items.filter(item => item.state === "pending" || item.state === "checking").length;
+
+        this.nodes.totalStat.textContent = this.format(this.items.length);
+        this.nodes.okStat.textContent = this.format(ok);
+        this.nodes.badStat.textContent = this.format(bad);
+        this.nodes.leftStat.textContent = this.format(left);
+        this.nodes.pageStat.textContent = `${this.page}/${this.totalPages}`;
+        this.nodes.rangeText.textContent = `${this.format(this.filtered.length ? start + 1 : 0)}–${this.format(end)} из ${this.format(this.filtered.length)}`;
+
+        this.nodes.prevBtn.disabled = this.page <= 1;
+        this.nodes.nextBtn.disabled = this.page >= this.totalPages;
+
+        if (!visible.length) {
+          this.nodes.list.innerHTML = `
+            <div class="empty">
+              <div>
+                <strong>${this.items.length ? "Ничего не найдено" : "Список пока пуст"}</strong>
+                ${this.items.length ? "Измени фильтр или очисти поиск." : "Создай варианты ссылок, затем нажми «Проверить»."}
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        const fragment = document.createDocumentFragment();
+
+        for (const item of visible) {
+          const row = document.createElement("div");
+          row.className = "row";
+
+          const statusClass = {
+            ok: "s-ok",
+            bad: "s-bad",
+            error: "s-bad",
+            cors: "s-warn",
+            warn: "s-warn",
+            checking: "s-info",
+            pending: ""
+          }[item.state] || "";
+
+          const safeUrl = this.escape(item.url);
+          const safeLabel = this.escape(item.label);
+          const safeLatency = this.escape(item.latency || "—");
+
+          row.innerHTML = `
+            <div class="idx">${this.format(item.id)}</div>
+            <div class="url"><a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${safeUrl}</a></div>
+            <div><span class="status-pill ${statusClass}" title="${this.escape(item.error || item.status || item.label)}">${safeLabel}</span></div>
+            <div class="small-cell latency">${safeLatency}</div>
+            <div class="mini-actions">
+              <button class="mini" type="button" title="Проверить ещё раз" data-action="recheck" data-url="${safeUrl}">↻</button>
+              <button class="mini" type="button" title="Копировать" data-action="copy" data-url="${safeUrl}">⧉</button>
+              <button class="mini" type="button" title="Открыть" data-action="open" data-url="${safeUrl}">↗</button>
+            </div>
+          `;
+
+          fragment.append(row);
+        }
+
+        this.nodes.list.replaceChildren(fragment);
+      }
+
+      renderDebounced() {
+        clearTimeout(this.renderTimer);
+        this.renderTimer = setTimeout(() => this.render(), 90);
+      }
+
+      renderProgress() {
+        const done = this.items.filter(item => item.state !== "pending" && item.state !== "checking").length;
+        const checking = this.items.filter(item => item.state === "checking").length;
+        const total = this.items.length;
+        const percent = total ? Math.round((done / total) * 100) : 0;
+
+        this.nodes.progressWrap.classList.add("active");
+        this.nodes.progressBar.style.width = `${percent}%`;
+        this.nodes.progressText.textContent = `Проверено ${this.format(done)} из ${this.format(total)}. Сейчас проверяется: ${this.format(checking)}.`;
+        this.renderDebounced();
+      }
+
+      showProgress() {
+        this.nodes.progressWrap.classList.add("active");
+        this.renderProgress();
+      }
+
+      hideProgressSoon() {
+        setTimeout(() => {
+          if (!this.isChecking) {
+            this.nodes.progressWrap.classList.remove("active");
+            this.nodes.progressBar.style.width = "0%";
+          }
+        }, 450);
+      }
+
+      getWorkingUrls() {
+        return this.items.filter(item => item.state === "ok").map(item => item.url);
+      }
+
+      async copyWorking() {
+        const urls = this.getWorkingUrls();
+        if (!urls.length) {
+          this.toast("Рабочих ссылок пока нет.");
+          return;
+        }
+
+        await this.copyText(urls.join("\n"), `Скопировано рабочих ссылок: ${this.format(urls.length)}.`);
+      }
+
+      exportWorkingTxt() {
+        const urls = this.getWorkingUrls();
+        if (!urls.length) {
+          this.toast("Рабочих ссылок пока нет.");
+          return;
+        }
+
+        this.download("working-links.txt", urls.join("\n"), "text/plain;charset=utf-8");
+        this.toast("TXT с рабочими ссылками создан.");
+      }
+
+      exportAllCsv() {
+        if (!this.items.length) {
+          this.toast("Список пуст.");
+          return;
+        }
+
+        const csv = [
+          "index,url,state,label,http_status,latency,checked_at,error",
+          ...this.items.map(item => [
+            item.id,
+            item.url,
+            item.state,
+            item.label,
+            item.status,
+            item.latency,
+            item.checkedAt,
+            item.error
+          ].map(value => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","))
+        ].join("\n");
+
+        this.download("checked-links.csv", csv, "text/csv;charset=utf-8");
+        this.toast("CSV создан.");
+      }
+
+      download(filename, content, type) {
+        const blob = new Blob([content], { type });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 900);
+      }
+
+      async copyText(text, message) {
+        try {
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+          } else {
+            const textarea = document.createElement("textarea");
+            textarea.value = text;
+            textarea.style.position = "fixed";
+            textarea.style.opacity = "0";
+            document.body.append(textarea);
+            textarea.select();
+            document.execCommand("copy");
+            textarea.remove();
+          }
+
+          this.toast(message);
+        } catch {
+          this.toast("Не удалось скопировать.");
+        }
+      }
+
+      setStatus(text, type = "ok") {
+        const dot = this.nodes.statusBadge.querySelector(".dot");
+        this.nodes.statusBadge.lastChild.textContent = ` ${text}`;
+        dot.style.background = type === "warn" ? "var(--warn)" : type === "danger" ? "var(--bad)" : "var(--ok)";
+      }
+
+      toast(message) {
+        this.nodes.toast.textContent = message;
+        this.nodes.toast.classList.add("show");
+        clearTimeout(this.toastTimer);
+        this.toastTimer = setTimeout(() => this.nodes.toast.classList.remove("show"), 2800);
+      }
+
+      toggleTheme() {
+        const next = this.nodes.html.dataset.theme === "dark" ? "light" : "dark";
+        this.nodes.html.dataset.theme = next;
+        localStorage.setItem("own-link-checker-theme", next);
+      }
+
+      save() {
+        localStorage.setItem("own-link-checker-settings", JSON.stringify(this.collectSettings()));
+      }
+
+      restore() {
+        const theme = localStorage.getItem("own-link-checker-theme");
+        if (theme === "dark" || theme === "light") this.nodes.html.dataset.theme = theme;
+
+        try {
+          const settings = JSON.parse(localStorage.getItem("own-link-checker-settings") || "{}");
+
+          for (const [key, value] of Object.entries(settings)) {
+            if (this.nodes[key] && "value" in this.nodes[key]) this.nodes[key].value = value;
+          }
+        } catch {
+          localStorage.removeItem("own-link-checker-settings");
+        }
+      }
+
+      format(value) {
+        return this.formatter.format(Number(value) || 0);
+      }
+
+      escape(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+    }
+
+    new OwnLinkChecker();
+  </script>
+</body>
+</html>
