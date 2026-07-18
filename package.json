@@ -1,9 +1,18 @@
 {
   "name": "own-link-checker-vercel",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=20.18.1"
+  },
+  "scripts": {
+    "test": "node --test",
+    "benchmark": "node benchmarks/benchmark.mjs",
+    "dev": "node scripts/dev-server.mjs"
+  },
+  "dependencies": {
+    "ipaddr.js": "^2.4.0",
+    "undici": "^7.28.0"
   }
 }
