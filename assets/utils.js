@@ -66,6 +66,15 @@ export function dedupeUrls(urls) {
   return [...map.values()];
 }
 
+export function chunkArray(values, size) {
+  const safeSize = Math.max(1, Math.floor(Number(size) || 1));
+  const chunks = [];
+  for (let index = 0; index < values.length; index += safeSize) {
+    chunks.push(values.slice(index, index + safeSize));
+  }
+  return chunks;
+}
+
 export function domainOf(value) {
   try { return new URL(value).hostname; } catch { return ""; }
 }

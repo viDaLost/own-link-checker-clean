@@ -1,5 +1,6 @@
 import {
   canonicalizeForDedupe,
+  chunkArray,
   csvEscape,
   dedupeUrls,
   domainOf,
@@ -10,7 +11,9 @@ import {
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const MAX_URLS = 1000;
+const MAX_URLS = 10000;
+const API_BATCH_SIZE = 500;
+const HISTORY_URL_LIMIT = 2000;
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 const escapeHtml = value => String(value ?? "")
@@ -378,42 +381,14 @@ class LinkPulseApp {
     this.nodes.progressCard.scrollIntoView({ behavior: "smooth", block: "start" });
 
     try {
-      const response = await fetch("/api/check-batch", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        signal: this.runController.signal,
-        body: JSON.stringify({
-          urls,
-          mode: this.mode,
-          concurrency: Number(this.nodes.concurrencySelect.value),
-          force
-        })
-      });
-
-      if (!response.ok) {
-        let payload = {};
-        try { payload = await response.json(); } catch {}
-        throw new Error(payload.error || `API вернул HTTP ${response.status}.`);
+      const batches = chunkArray(urls, API_BATCH_SIZE);
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+        if (this.runController.signal.aborted) break;
+        this.nodes.progressSubtitle.textContent = `Режим: ${this.mode === "full" ? "полный" : "быстрый"}. Пакет ${batchIndex + 1} из ${batches.length}.`;
+        await this.runApiBatch(batches[batchIndex], force);
       }
-      if (!response.body) throw new Error("Браузер не поддерживает потоковый ответ.");
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { value, done } = await reader.read();
-        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          this.handleStreamEvent(JSON.parse(line));
-        }
-        if (done) break;
-      }
-      if (buffer.trim()) this.handleStreamEvent(JSON.parse(buffer));
-
-      if (this.isRunning) this.finishRun("done");
+      if (this.isRunning && !this.runController.signal.aborted) this.finishRun("done");
     } catch (error) {
       if (error?.name === "AbortError") {
         this.finishRun("cancelled");
@@ -423,12 +398,45 @@ class LinkPulseApp {
     }
   }
 
-  handleStreamEvent(event) {
-    if (event.type === "start") {
-      this.currentStats = event.stats;
-      this.updateProgress(event.stats);
-      return;
+  async runApiBatch(urls, force) {
+    const response = await fetch("/api/check-batch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      signal: this.runController.signal,
+      body: JSON.stringify({
+        urls,
+        mode: this.mode,
+        concurrency: Number(this.nodes.concurrencySelect.value),
+        force
+      })
+    });
+
+    if (!response.ok) {
+      let payload = {};
+      try { payload = await response.json(); } catch {}
+      throw new Error(payload.error || `API вернул HTTP ${response.status}.`);
     }
+    if (!response.body) throw new Error("Браузер не поддерживает потоковый ответ.");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        this.handleStreamEvent(JSON.parse(line));
+      }
+      if (done) break;
+    }
+    if (buffer.trim()) this.handleStreamEvent(JSON.parse(buffer));
+  }
+
+  handleStreamEvent(event) {
+    if (event.type === "start") return;
     if (event.type === "result") {
       const key = canonicalizeForDedupe(event.result?.normalizedUrl || event.entry?.normalizedUrl || event.entry?.originalUrl);
       let item = this.itemMap.get(key);
@@ -446,15 +454,23 @@ class LinkPulseApp {
           this.itemMap.set(key, item);
         }
       }
-      this.currentStats = event.stats;
-      this.updateProgress(event.stats);
+      const result = event.result || {};
+      this.currentStats.checked += 1;
+      this.currentStats.remaining = Math.max(0, this.currentStats.total - this.currentStats.checked);
+      if (result.category === "redirect") this.currentStats.redirects += 1;
+      else if (result.ok) this.currentStats.success += 1;
+      else this.currentStats.errors += 1;
+      if (result.cached) this.currentStats.cached = (this.currentStats.cached || 0) + 1;
+      const elapsedSeconds = Math.max(0.001, (performance.now() - this.runStartedAt) / 1000);
+      this.currentStats.speed = this.currentStats.checked / elapsedSeconds;
+      this.currentStats.etaSeconds = this.currentStats.speed > 0
+        ? this.currentStats.remaining / this.currentStats.speed
+        : null;
+      this.updateProgress(this.currentStats);
       this.scheduleRender();
       return;
     }
-    if (event.type === "done") {
-      this.currentStats = event.stats;
-      this.updateProgress(event.stats);
-    }
+    if (event.type === "done") return;
     if (event.type === "error") throw new Error(event.error || "Ошибка потока.");
   }
 
@@ -801,16 +817,23 @@ class LinkPulseApp {
       errors: this.items.filter(item => !item.ok).length
     };
     const history = this.getHistory().filter(entry => now - entry.createdAt < 7 * 24 * 60 * 60 * 1000);
+    const canStoreUrls = this.items.length <= HISTORY_URL_LIMIT;
     history.unshift({
       id: crypto.randomUUID(),
       createdAt: now,
       durationMs: Math.round(durationMs),
       mode: this.mode,
       counts,
-      urls: this.items.slice(0, MAX_URLS).map(item => item.originalUrl)
+      urls: canStoreUrls ? this.items.map(item => item.originalUrl) : [],
+      urlsOmitted: !canStoreUrls
     });
-    localStorage.setItem("linkpulse-history-v1", JSON.stringify(history.slice(0, 10)));
-    this.renderHistory();
+    try {
+      localStorage.setItem("linkpulse-history-v1", JSON.stringify(history.slice(0, 10)));
+      this.renderHistory();
+      if (!canStoreUrls) this.toast("Сводка сохранена, но список из более чем 2 000 URL не записан в локальную историю.");
+    } catch {
+      this.toast("Не удалось сохранить локальную историю: хранилище браузера заполнено.");
+    }
   }
 
   getHistory() {
@@ -825,7 +848,7 @@ class LinkPulseApp {
   renderHistory() {
     const history = this.getHistory().filter(entry => Date.now() - entry.createdAt < 7 * 24 * 60 * 60 * 1000);
     this.nodes.historyCard.hidden = history.length === 0;
-    this.nodes.historyList.innerHTML = history.map(entry => `<article class="history-item"><div><strong>${new Date(entry.createdAt).toLocaleString("ru-RU")} · ${escapeHtml(entry.mode === "full" ? "полная" : "быстрая")} проверка</strong><p>${this.format(entry.counts.total)} URL · ${this.format(entry.counts.working)} работают · ${this.format(entry.counts.errors)} ошибок · ${formatDuration(entry.durationMs)}</p></div><button class="button button-secondary" type="button" data-history-run="${escapeHtml(entry.id)}">Запустить снова</button></article>`).join("");
+    this.nodes.historyList.innerHTML = history.map(entry => `<article class="history-item"><div><strong>${new Date(entry.createdAt).toLocaleString("ru-RU")} · ${escapeHtml(entry.mode === "full" ? "полная" : "быстрая")} проверка</strong><p>${this.format(entry.counts.total)} URL · ${this.format(entry.counts.working)} работают · ${this.format(entry.counts.errors)} ошибок · ${formatDuration(entry.durationMs)}${entry.urlsOmitted ? " · сохранена только сводка" : ""}</p></div><button class="button button-secondary" type="button" data-history-run="${escapeHtml(entry.id)}" ${entry.urlsOmitted ? "disabled" : ""}>${entry.urlsOmitted ? "Список не сохранён" : "Запустить снова"}</button></article>`).join("");
   }
 
   rerunHistory(id) {
