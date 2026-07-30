@@ -1,140 +1,108 @@
-# LinkPulse — быстрый и безопасный link checker
+# vinext-starter
 
-LinkPulse проверяет до 1 000 URL за запуск, передаёт результаты потоком и не блокирует интерфейс во время больших проверок. Проект остаётся без frontend-сборки: статический HTML/CSS/ES modules и Node.js serverless functions для Vercel.
+A clean full-stack starter running on
+[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
+Drizzle support.
 
-## Что изменилось в версии 2.0
+## Prerequisites
 
-- Пакетный endpoint `POST /api/check-batch` с NDJSON streaming.
-- Ограниченный общий параллелизм и отдельный лимит запросов к одному хосту.
-- Повторно используемый `undici.Agent`: keep-alive, connection pooling и безопасный DNS lookup.
-- HEAD с fallback на ограниченный GET.
-- Ручная обработка редиректов с SSRF-проверкой каждого перехода.
-- Раздельные тайм-ауты DNS/connect/headers/read/TLS и общий deadline.
-- Повторы только для временных сетевых ошибок, 408, 429 и отдельных 5xx; поддерживается `Retry-After`.
-- Краткосрочный кэш с принудительной перепроверкой.
-- Дедупликация URL с сохранением числа повторений.
-- Отмена проверки, повтор ошибок/выбранных URL, фильтры, сортировка и экспорт CSV/JSON/TXT.
-- Импорт TXT, CSV и sitemap.xml через Web Worker.
-- Mobile-first карточки результатов вместо широкой таблицы.
-- Локальная история по явному opt-in, автоматически ограниченная 10 запусками и 7 днями.
-- CSP, дополнительные security headers и 26 автоматических тестов.
+- Node.js `>=22.13.0`
+- Linux with `flock`, `curl`, and GNU `timeout`
 
-## Архитектура
+## Sites Lifecycle
 
-```text
-Browser
-  ├─ index.html + assets/app.js + assets/styles.css
-  ├─ Web Worker для разбора больших файлов
-  └─ POST /api/check-batch (application/x-ndjson)
-                  │
-                  ▼
-Batch worker pool
-  ├─ global concurrency limit
-  ├─ per-host concurrency limit
-  ├─ deduplication + progress stats
-  └─ AbortSignal on disconnect
-                  │
-                  ▼
-Safe URL checker
-  ├─ protocol/host/port validation
-  ├─ DNS resolution + public-IP enforcement
-  ├─ custom undici lookup (DNS rebinding protection)
-  ├─ manual redirect validation
-  ├─ HEAD → limited GET
-  ├─ retries/backoff/jitter
-  └─ in-memory result cache
-```
+The Sites lifecycle CLI runs the locked dependency install before returning this checkout. Edit the source under `app/`, then checkpoint when a coherent milestone is ready to inspect or share. The remote Sites builder runs `npm run build` against the pushed commit. Do not repeat install or build as a normal pre-checkpoint step.
 
-## Локальный запуск
+This starter does not use `wrangler.jsonc`.
 
-Требуется Node.js 20.18.1 или новее.
+`install:ci` is intentionally a single, non-retrying `npm ci`. It refuses a concurrent install for the same project, consumes a matching image-seeded npm cache with `--prefer-offline` while retaining registry fallback for a missing cache object, otherwise downloads and verifies the complete vinext tarball recorded in `package-lock.json`, limits npm to one socket, and terminates a stalled install. `build` applies a short timeout and then validates the Sites artifact. These helpers target Linux and use GNU `timeout`; they are not native macOS scripts.
 
-```bash
-npm install
-npm test
-npm run dev
-```
+Scripts that need writable project-scoped home, npm, XDG, and temporary paths use `scripts/sites-env.sh`. The `dev` and `start` scripts honor the caller's runtime environment and keep Wrangler logs inside the checkout. The generated `.sites-runtime/` directory is disposable and ignored by Git.
 
-Откройте `http://127.0.0.1:3000`.
+## Included Shape
 
-Локальный dev server сохраняет те же SSRF-ограничения, что и production. Приватные адреса разрешаются только в автоматических тестах при одновременных `NODE_ENV=test` и `ALLOW_PRIVATE_NETWORKS_FOR_TESTS=true`.
+- edit site code under `app/`
+- `app/chatgpt-auth.ts` provides optional dispatch-owned ChatGPT sign-in helpers
+- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
+- `vite.config.ts` simulates declared bindings for local development
+- `db/index.ts` reads the D1 binding from the Cloudflare Worker environment
+- `db/schema.ts` starts intentionally empty
+- `examples/d1/` contains an optional D1 example surface
+- `drizzle.config.ts` supports local migration generation when needed
 
-## Vercel
+## Workspace Auth Headers
 
-1. Импортируйте репозиторий.
-2. При необходимости скопируйте значения из `.env.example` в Environment Variables.
-3. Выполните deploy.
+OpenAI workspace sites can read the current user's email from
+`oai-authenticated-user-email`.
 
-`ALLOWED_HOSTS=*` разрешает любые публичные HTTP/HTTPS-хосты. Для закрытого инструмента безопаснее задать allowlist, например:
+SIWC-authenticated workspace sites may also receive
+`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
+`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
+`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
 
-```text
-ALLOWED_HOSTS=example.com,example.org
-```
+Treat the full name as optional and fall back to email when it is absent:
 
-По умолчанию разрешены только порты 80 и 443. Нестандартные публичные порты добавляются явно через `ALLOWED_PORTS`.
+```tsx
+import { headers } from "next/headers";
 
-## API
+export default async function Home() {
+  const requestHeaders = await headers();
+  const email = requestHeaders.get("oai-authenticated-user-email");
+  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
+  const fullName =
+    encodedFullName &&
+    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
+      "percent-encoded-utf-8"
+      ? decodeURIComponent(encodedFullName)
+      : null;
 
-### Одиночная проверка
-
-```http
-POST /api/check
-Content-Type: application/json
-
-{
-  "url": "https://example.com",
-  "mode": "quick",
-  "force": false
+  const displayName = fullName ?? email;
+  // ...
 }
 ```
 
-### Потоковая пакетная проверка
+## Optional Dispatch-Owned ChatGPT Sign-In
 
-```http
-POST /api/check-batch
-Content-Type: application/json
+Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
+optional or required ChatGPT sign-in:
 
-{
-  "urls": ["https://example.com", "https://example.com/missing"],
-  "mode": "quick",
-  "concurrency": 12,
-  "force": false
-}
-```
+- Use `getChatGPTUser()` for optional signed-in UI.
+- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
+  anonymous visitors through Sign in with ChatGPT.
+- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
+  browser links or actions.
+- Pass a same-origin relative `returnTo` path for the destination after sign-in
+  or sign-out. The helper validates and safely encodes it.
+- Mark protected pages with `export const dynamic = "force-dynamic"` because
+  they depend on per-request identity headers.
 
-Ответ — строки NDJSON с типами `start`, `result`, `done` или `error`.
+Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
+OAuth cookies, and identity header injection. Do not implement app routes for
+those reserved paths. Routes that do not import and call the helper remain
+anonymous-compatible.
 
-## Безопасность
+SIWC establishes identity only; it does not prove workspace membership. Use the
+Sites hosting platform's access policy controls for workspace-wide restrictions,
+or enforce explicit server-side membership or allowlist checks.
 
-Проверка произвольных URL является SSRF-sensitive операцией. Реализованы:
+Use SIWC for account pages, user-specific dashboards, saved records, and write
+actions tied to the current ChatGPT user. Leave public content anonymous.
 
-- запрет протоколов кроме HTTP/HTTPS;
-- запрет credentials в URL;
-- блокировка localhost, `.local`, `.internal`, `.lan`, `.home` и metadata hostnames;
-- блокировка loopback, private, link-local, multicast, reserved, CGNAT и private IPv6;
-- проверка всех DNS-ответов, а не только первого;
-- custom DNS lookup в HTTP-клиенте, чтобы соединение использовало только уже проверенный публичный IP;
-- повторная проверка цели на каждом редиректе;
-- лимиты портов, редиректов, тела ответа, времени, URL, конкурентности и активных запусков;
-- отсутствие stack traces и серверных секретов в ответах;
-- безопасное отображение URL без `innerHTML` в окне диагностики;
-- CSP и запрет встраивания страницы во фреймы.
+## Diagnostic Commands
 
-Rate limiting, кэш и active-job counters находятся в памяти конкретного serverless instance. Для глобальных лимитов и долговременных задач нужен внешний Redis/queue/storage.
+- `npm run install:ci`: perform the one bounded lockfile install
+- `npm run dev`: start the Vite/Vinext development server
+- `npm run build`: build and validate the deployable Sites artifact
+- `npm run start`: start the built Vinext application
+- `npm test`: build, validate, and verify the rendered development-preview metadata
+- `npm run validate:artifact`: recheck an existing artifact's manifest and ESM `default.fetch` export
+- `npm run db:generate`: generate Drizzle migrations after schema changes
 
-## Тесты и benchmark
+Use build and validation commands for targeted diagnosis after a remote failure, not as part of the normal checkpoint path.
 
-```bash
-npm test
-npm run benchmark -- 100
-npm run benchmark -- 1000
-```
+The timeout defaults can be overridden for a controlled canary with `SITES_INSTALL_TIMEOUT`, `SITES_INSTALL_KILL_AFTER`, `SITES_BUILD_TIMEOUT`, and `SITES_BUILD_KILL_AFTER`. A timeout fails the command; the helpers never retry an unchanged install or build.
 
-Benchmark использует локальный контролируемый HTTP-сервер с предсказуемыми задержками и смешанными ответами 200/404/405. Результаты текущего прогона сохранены в `benchmarks/`.
+## Learn More
 
-## Известные ограничения
-
-- Текущая serverless-версия не переживает обновление страницы и не хранит очередь во внешней базе.
-- Глобальная синхронизация rate limit/cache между разными Vercel instances отсутствует.
-- Нет бесконтрольного crawler: импортируются файлы sitemap, но обход домена намеренно не включён без durable queue и robots/politeness policy.
-- XLSX не добавлен, поскольку CSV/JSON покрывают экспорт без тяжёлой клиентской зависимости.
+- [vinext Documentation](https://github.com/cloudflare/vinext)
+- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
