@@ -48,10 +48,10 @@ const MAX_REDIRECTS = 6;
 const CHECK_TIMEOUT_MS = 9_000;
 const SLOW_THRESHOLD_MS = 2_000;
 const CACHE_TTL_MS = 120_000;
-const CACHE_MAX_ENTRIES = 5_000;
+const CACHE_MAX_ENTRIES = 20_000;
 const RATE_WINDOW_MS = 60_000;
-const MAX_RUNS_PER_MINUTE = 20;
-const MAX_URLS_PER_MINUTE = 3_000;
+const MAX_RUNS_PER_MINUTE = 60;
+const MAX_URLS_PER_MINUTE = 12_000;
 
 const cache = new Map<string, CacheEntry>();
 const rateEntries = new Map<string, RateEntry>();

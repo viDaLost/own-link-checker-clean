@@ -83,6 +83,7 @@ test("serves the LinkPulse application from the root route", async () => {
   const html = await response.text();
   assert.match(html, /LINKPULSE/);
   assert.match(html, /Проверьте все ссылки/);
+  assert.match(html, /10(?:\s|&nbsp;|\u00a0)*000/);
 });
 
 test("streams safe diagnostics from the Vercel route handler", async () => {
@@ -119,4 +120,41 @@ test("streams safe diagnostics from the Vercel route handler", async () => {
     new Set(["invalid_url", "blocked"]),
   );
   assert.equal(events.at(-1)?.type, "done");
+});
+
+test("accepts a 10,000 URL run across Vercel-sized batches", async () => {
+  const batchSize = 200;
+  const batchCount = 50;
+  let checked = 0;
+
+  for (let batch = 0; batch < batchCount; batch += 1) {
+    const urls = Array.from(
+      { length: batchSize },
+      (_, index) => `http://localhost/run-${batch}/url-${index}`,
+    );
+    const response = await fetch(`${baseUrl}/api/check-batch`, {
+      method: "POST",
+      headers: {
+        accept: "application/x-ndjson",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        urls,
+        mode: "quick",
+        concurrency: 12,
+      }),
+    });
+
+    assert.equal(response.status, 200, `batch ${batch + 1} was rejected`);
+    const events = (await response.text())
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const results = events.filter((event) => event.type === "result");
+    assert.equal(results.length, batchSize);
+    assert.equal(events.at(-1)?.type, "done");
+    checked += results.length;
+  }
+
+  assert.equal(checked, 10_000);
 });

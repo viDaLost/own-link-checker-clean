@@ -38,6 +38,7 @@ import {
   Zap,
 } from "lucide-react";
 import {
+  startTransition,
   type ChangeEvent,
   type CSSProperties,
   type DragEvent,
@@ -138,8 +139,9 @@ type StreamEvent = {
   error?: string;
 };
 
-const MAX_URLS = 1_000;
-const API_BATCH_SIZE = 100;
+const MAX_URLS = 10_000;
+const API_BATCH_SIZE = 200;
+const STREAM_UI_FLUSH_MS = 100;
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const SETTINGS_KEY = "linkpulse-studio-settings-v1";
 const HISTORY_KEY = "linkpulse-studio-history-v1";
@@ -382,9 +384,12 @@ export default function Home() {
   const inputPanelRef = useRef<HTMLElement>(null);
   const progressRefEl = useRef<HTMLElement>(null);
   const resultsRef = useRef<ResultItem[]>([]);
+  const resultIndexRef = useRef<Map<string, number>>(new Map());
   const progressRef = useRef<ProgressState>(emptyProgress);
   const controllerRef = useRef<AbortController | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const streamFlushTimerRef =
+    useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const numberFormat = useMemo(() => new Intl.NumberFormat("ru-RU"), []);
 
@@ -414,12 +419,40 @@ export default function Home() {
 
   const commitResults = useCallback((next: ResultItem[]) => {
     resultsRef.current = next;
-    setResults(next);
+    const nextIndex = new Map<string, number>();
+    next.forEach((item, index) => {
+      nextIndex.set(item.key, index);
+      nextIndex.set(item.originalUrl, index);
+    });
+    resultIndexRef.current = nextIndex;
+    setResults([...next]);
   }, []);
 
   const commitProgress = useCallback((next: ProgressState) => {
     progressRef.current = next;
     setProgress(next);
+  }, []);
+
+  const flushStreamUpdates = useCallback(() => {
+    if (streamFlushTimerRef.current) {
+      clearTimeout(streamFlushTimerRef.current);
+      streamFlushTimerRef.current = null;
+    }
+    const nextResults = [...resultsRef.current];
+    const nextProgress = { ...progressRef.current };
+    startTransition(() => setResults(nextResults));
+    setProgress(nextProgress);
+  }, []);
+
+  const scheduleStreamFlush = useCallback(() => {
+    if (streamFlushTimerRef.current) return;
+    streamFlushTimerRef.current = setTimeout(() => {
+      streamFlushTimerRef.current = null;
+      const nextResults = [...resultsRef.current];
+      const nextProgress = { ...progressRef.current };
+      startTransition(() => setResults(nextResults));
+      setProgress(nextProgress);
+    }, STREAM_UI_FLUSH_MS);
   }, []);
 
   useEffect(() => {
@@ -520,6 +553,9 @@ export default function Home() {
     () => () => {
       controllerRef.current?.abort();
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      if (streamFlushTimerRef.current) {
+        clearTimeout(streamFlushTimerRef.current);
+      }
     },
     [],
   );
@@ -691,9 +727,9 @@ export default function Home() {
             .replaceAll("{num}", String(number))
             .replaceAll("{letters}", code),
         );
-        if (generated.length >= 500) break;
+        if (generated.length >= MAX_URLS) break;
       }
-      if (generated.length >= 500) break;
+      if (generated.length >= MAX_URLS) break;
     }
     appendInput(generated.join("\n"));
     setGeneratorOpen(false);
@@ -713,22 +749,20 @@ export default function Home() {
           event.entry.normalizedUrl ||
           event.entry.originalUrl,
       );
-      const current = resultsRef.current;
-      const index = current.findIndex(
-        (item) =>
-          item.key === incomingKey ||
-          item.originalUrl === event.entry?.originalUrl,
-      );
-      if (index >= 0) {
-        const next = [...current];
-        next[index] = {
-          ...next[index],
+      const index =
+        resultIndexRef.current.get(incomingKey) ??
+        resultIndexRef.current.get(event.entry.originalUrl);
+      if (index !== undefined) {
+        const previous = resultsRef.current[index];
+        resultsRef.current[index] = {
+          ...previous,
           ...incoming,
           key: incomingKey,
           occurrences:
-            event.entry.occurrences || next[index].occurrences || 1,
+            event.entry.occurrences || previous.occurrences || 1,
         } as ResultItem;
-        commitResults(next);
+        resultIndexRef.current.set(incomingKey, index);
+        resultIndexRef.current.set(event.entry.originalUrl, index);
       }
 
       const elapsedSeconds = Math.max(
@@ -753,9 +787,10 @@ export default function Home() {
         speed,
         etaSeconds: remaining > 0 ? remaining / Math.max(speed, 0.001) : 0,
       };
-      commitProgress(nextProgress);
+      progressRef.current = nextProgress;
+      scheduleStreamFlush();
     },
-    [commitProgress, commitResults],
+    [scheduleStreamFlush],
   );
 
   const runApiBatch = useCallback(
@@ -806,8 +841,9 @@ export default function Home() {
       if (buffer.trim()) {
         updateFromStream(JSON.parse(buffer) as StreamEvent);
       }
+      flushStreamUpdates();
     },
-    [concurrency, mode, updateFromStream],
+    [concurrency, flushStreamUpdates, mode, updateFromStream],
   );
 
   const storeHistory = useCallback(
@@ -1274,7 +1310,7 @@ export default function Home() {
           </div>
           <div className="hero-proof">
             <div>
-              <strong>1 000</strong>
+              <strong>{numberFormat.format(MAX_URLS)}</strong>
               <span>URL за запуск</span>
             </div>
             <div>
