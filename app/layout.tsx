@@ -1,28 +1,39 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const productionHost =
+  process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+  "own-link-checker-clean.vercel.app";
+const siteUrl = `https://${productionHost}`;
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: "LinkPulse — премиальная проверка ссылок",
   description:
     "Потоковая проверка доступности, редиректов и скорости сотен URL с понятной диагностикой и экспортом.",
-  other: {
-    "codex-preview": "development",
+  applicationName: "LinkPulse",
+  openGraph: {
+    title: "LinkPulse — премиальная проверка ссылок",
+    description:
+      "Проверяйте доступность, редиректы и скорость сотен URL в одном потоке.",
+    type: "website",
+    locale: "ru_RU",
+    url: "/",
   },
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#070b0c" },
+    { media: "(prefers-color-scheme: light)", color: "#edf1ef" },
+  ],
 };
 
 export default function RootLayout({
@@ -32,11 +43,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ru">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }
